@@ -1,0 +1,54 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- Virtual Environments ---
+venv/
+.env/
+env/
+ENV/
+.venv/
+
+# --- Streamlit ---
+.streamlit/secrets.toml
+# 如果你不需要提交 config.toml，也可以取消下面这行的注释
+# .streamlit/config.toml
+
+# --- IDE Settings (VS Code / JetBrains) ---
+.vscode/
+.idea/
+*.swp
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Data ---
+# 假设你以后会保存下载的新闻数据，不要传到代码库
+data/
+*.csv
+*.json
+*.log
+
+# --- Docker ---
+# 如果你不小心把镜像导出成 tar 文件了
+*.tar

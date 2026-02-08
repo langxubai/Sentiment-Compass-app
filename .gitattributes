@@ -1,0 +1,23 @@
+# 自动检测文本文件，并进行规范化
+* text=auto
+
+# 强制 Python 文件在检出时使用系统默认，但在仓库中永远存储为 LF (Linux 风格)
+# 这对 Docker 构建至关重要！
+*.py text eol=lf
+*.sh text eol=lf
+
+# Docker 相关文件强制使用 LF
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+
+# 锁定文档格式
+*.md text
+*.txt text
+
+# 排除二进制文件
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
