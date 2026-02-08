@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import random
+import requests
 
 # --- 页面配置 ---
 st.set_page_config(
@@ -24,6 +25,49 @@ def analyze_sentiment(text):
         return 0, 0
     blob = TextBlob(text)
     return blob.sentiment.polarity, blob.sentiment.subjectivity
+
+# --- 数据获取函数 ---
+def fetch_news_data(topic, api_key):
+    """
+    从 NewsAPI 获取指定话题的新闻，并进行情绪分析。
+    """
+    url = f"https://newsapi.org/v2/everything?q={topic}&language=en&sortBy=publishedAt&pageSize=50&apiKey={api_key}"
+    
+    try:
+        response = requests.get(url)
+        data = response.json()
+        
+        if data.get("status") != "ok":
+            st.error(f"API Error: {data.get('message')}")
+            return pd.DataFrame()
+        
+        articles = data.get("articles", [])
+        processed_data = []
+        
+        for article in articles:
+            # 获取标题和发布时间
+            title = article.get("title", "")
+            description = article.get("description", "") or ""
+            published_at = article.get("publishedAt", "")[:10] # 截取日期部分 YYYY-MM-DD
+            
+            # 合并标题和描述进行更准确的情绪分析
+            full_text = f"{title}. {description}"
+            
+            # 调用你原有的分析函数
+            polarity, subjectivity = analyze_sentiment(full_text)
+            
+            processed_data.append({
+                "Date": published_at,
+                "Title": title,
+                "Sentiment": polarity,
+                "Subjectivity": subjectivity
+            })
+            
+        return pd.DataFrame(processed_data)
+        
+    except Exception as e:
+        st.error(f"网络请求失败: {e}")
+        return pd.DataFrame()
 
 def get_sentiment_label(score):
     if score > 0.1:
@@ -88,64 +132,73 @@ with tab1:
             # 物理/AI 背景的解释
             st.caption(f"**分析逻辑：** 基于 NLP 语义向量分析。Polarity 为 -1 (极度悲观) 到 1 (极度乐观)。如果主观程度高且情绪极端，通常代表非理性的“噪音”。")
 
-# --- Tab 2: 趋势分析 (模拟数据) ---
+# --- Tab 2: 真实趋势分析 ---
 with tab2:
-    st.subheader("时间序列情绪流 (Sentiment Flow)")
-    st.markdown("模拟过去 30 天的市场舆论变化与商品价格的关联。")
+    st.subheader("🌐 实时舆论趋势 (Live Sentiment Trend)")
     
-    if st.button("生成模拟数据流"):
-        # 模拟数据生成
-        dates = [datetime.today() - timedelta(days=x) for x in range(30)]
-        dates.reverse()
-        
-        data = []
-        price = 100
-        sentiment_accum = 0
-        
-        for date in dates:
-            # 随机生成情绪波动 (模拟布朗运动 + 情绪动量)
-            daily_sentiment = random.uniform(-0.5, 0.5)
-            sentiment_accum += daily_sentiment
-            
-            # 价格受情绪驱动 (简化模型：Price ~ Integral of Sentiment)
-            price = price * (1 + daily_sentiment * 0.1) 
-            
-            data.append({
-                "Date": date.strftime("%Y-%m-%d"),
-                "Sentiment": daily_sentiment,
-                "Simulated_Price": price
-            })
-            
-        df = pd.DataFrame(data)
-        
-        # 绘制双轴图表
-        # 创建图形
-        fig_trend = go.Figure()
+    # 1. 获取用户输入
+    col_input, col_btn = st.columns([3, 1])
+    with col_input:
+        topic = st.text_input("输入关注的资产/话题 (例如: Gold, Bitcoin, AI)", value="Quantum Computing")
+    with col_btn:
+        # 实际开发中建议将 API Key 放入 st.secrets，这里为了演示通过输入框获取或硬编码
+        api_key = st.text_input("NewsAPI Key", type="password", help="去 newsapi.org 免费申请")
+        start_btn = st.button("抓取并分析")
 
-        # 添加价格线 (左轴)
-        fig_trend.add_trace(go.Scatter(
-            x=df['Date'], y=df['Simulated_Price'],
-            name='商品价格 (信念结果)',
-            line=dict(color='#636EFA', width=3)
-        ))
+    if start_btn and topic and api_key:
+        with st.spinner(f"正在全网搜索关于 '{topic}' 的舆论信号..."):
+            # A. 获取真实数据
+            df_raw = fetch_news_data(topic, api_key)
+            
+            if not df_raw.empty:
+                # B. 数据聚合 (按日期计算平均情绪)
+                # 将日期转换为 datetime 对象以便排序
+                df_raw['Date'] = pd.to_datetime(df_raw['Date'])
+                df_trend = df_raw.groupby('Date')[['Sentiment']].mean().reset_index()
+                df_trend = df_trend.sort_values('Date')
+                
+                # C. 统计数据展示
+                st.success(f"成功分析了 {len(df_raw)} 条相关新闻！")
+                
+                avg_sentiment = df_raw['Sentiment'].mean()
+                sentiment_str = "乐观 🟢" if avg_sentiment > 0.05 else ("悲观 🔴" if avg_sentiment < -0.05 else "中性 ⚪")
+                
+                m1, m2, m3 = st.columns(3)
+                m1.metric("当前综合情绪", f"{avg_sentiment:.3f}", sentiment_str)
+                m2.metric("最大波动 (Max Polarity)", f"{df_raw['Sentiment'].max():.2f}")
+                m3.metric("新闻样本量", len(df_raw))
 
-        # 添加情绪柱状图 (右轴)
-        fig_trend.add_trace(go.Bar(
-            x=df['Date'], y=df['Sentiment'],
-            name='单日舆论情绪',
-            marker_color=df['Sentiment'].apply(lambda x: '#2bd27f' if x>0 else '#ff4b4b'),
-            yaxis='y2',
-            opacity=0.6
-        ))
+                # D. 绘图 (和原来类似的双轴图，但这里我们先只画情绪趋势)
+                fig_trend = go.Figure()
 
-        # 设置双轴
-        fig_trend.update_layout(
-            title='舆论情绪与价格相关性模型',
-            yaxis=dict(title='价格 ($)', side='left'),
-            yaxis2=dict(title='情绪指数', side='right', overlaying='y', range=[-1, 1]),
-            hovermode="x unified"
-        )
-        
-        st.plotly_chart(fig_trend, use_container_width=True)
-        
-        st.info("观察结论：在很多时刻，情绪的剧烈波动（柱状图）往往先于价格（曲线）的剧烈变化，或者是价格变化的放大器。")
+                # 情绪柱状图
+                fig_trend.add_trace(go.Bar(
+                    x=df_trend['Date'], 
+                    y=df_trend['Sentiment'],
+                    name='平均舆论情绪',
+                    marker_color=df_trend['Sentiment'].apply(lambda x: '#2bd27f' if x>0 else '#ff4b4b')
+                ))
+                
+                # 添加趋势线
+                fig_trend.add_trace(go.Scatter(
+                    x=df_trend['Date'],
+                    y=df_trend['Sentiment'],
+                    mode='lines',
+                    name='情绪平滑曲线',
+                    line=dict(color='blue', width=2, shape='spline')
+                ))
+
+                fig_trend.update_layout(
+                    title=f"'{topic}' 过去30天舆论情绪走势",
+                    yaxis=dict(title='情绪极性 (Polarity)', range=[-1, 1]),
+                    hovermode="x unified"
+                )
+                
+                st.plotly_chart(fig_trend, use_container_width=True)
+                
+                # E. 展示具体新闻列表 (增加可信度)
+                with st.expander("查看底层新闻源 (Source Data)"):
+                    st.dataframe(df_raw[['Date', 'Title', 'Sentiment']].sort_values(by='Date', ascending=False), use_container_width=True)
+            
+            else:
+                st.warning("未找到相关数据，请检查 API Key 或更换关键词。")
