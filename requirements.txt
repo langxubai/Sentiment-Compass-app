@@ -3,3 +3,4 @@ textblob>=0.17.1
 pandas>=2.0.0
 plotly>=5.18.0
 requests
+praw
